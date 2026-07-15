@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TXT to Excel Converter</title>
+    <!-- SheetJS Library for Excel conversion -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .file-label {
+            display: inline-block;
+            background-color: #e9ecef;
+            color: #495057;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            border: 1px solid #ced4da;
+            transition: 0.3s;
+        }
+        .file-label:hover {
+            background-color: #dde0e3;
+        }
+        #fileName {
+            display: block;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #28a745;
+            font-weight: bold;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            transition: 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #a0c4ff;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>TXT to Excel Converter</h2>
+        
+        <label for="fileInput" class="file-label">📂 Choose TXT File</label>
+        <input type="file" id="fileInput" accept=".txt">
+        
+        <span id="fileName">No file selected</span>
+        
+        <button id="convertBtn" disabled>Convert & Download</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const fileNameDisplay = document.getElementById('fileName');
+        const convertBtn = document.getElementById('convertBtn');
+        const statusDisplay = document.getElementById('status');
+
+        let selectedFile = null;
+
+        // When a file is selected
+        fileInput.addEventListener('change', function(event) {
+            selectedFile = event.target.files[0];
+            if (selectedFile) {
+                fileNameDisplay.textContent = "Selected: " + selectedFile.name;
+                convertBtn.disabled = false;
+                statusDisplay.textContent = "";
+            } else {
+                fileNameDisplay.textContent = "No file selected";
+                convertBtn.disabled = true;
+            }
+        });
+
+        // When convert button is clicked
+        convertBtn.addEventListener('click', function() {
+            if (!selectedFile) return;
+
+            statusDisplay.textContent = "Processing...";
+            convertBtn.disabled = true;
+
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split('\n');
+                
+                // Initialize array with headers
+                const excelData = [['UID', 'Password', 'Cookies']];
+
+                for (let line of lines) {
+                    line = line.trim();
+                    
+                    // Skip empty lines or header information
+                    if (!line || line.startsWith('=') || line.startsWith('Machine') || line.startsWith('Total') || line.startsWith('Date')) {
+                        continue;
+                    }
+
+                    // Split by colon. 
+                    // Note: Cookies might contain colons, so we only split the first two colons.
+                    const parts = line.split(':');
+                    
+                    if (parts.length >= 3) {
+                        const uid = parts[0].trim();
+                        const password = parts[1].trim();
+                        // Join the rest of the array back with colon in case cookies had colons
+                        const cookies = parts.slice(2).join(':').trim(); 
+                        
+                        excelData.push([uid, password, cookies]);
+                    }
+                }
+
+                if (excelData.length > 1) {
+                    // Create a new workbook and worksheet
+                    const wb = XLSX.utils.book_new();
+                    const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+                    // Add worksheet to workbook
+                    XLSX.utils.book_append_sheet(wb, ws, "Data");
+
+                    // Generate Excel file and trigger download
+                    XLSX.writeFile(wb, "Converted_Data.xlsx");
+
+                    statusDisplay.textContent = `Success! Converted ${excelData.length - 1} rows.`;
+                    statusDisplay.style.color = "green";
+                } else {
+                    statusDisplay.textContent = "No valid data found in the file.";
+                    statusDisplay.style.color = "red";
+                }
+                
+                convertBtn.disabled = false;
+            };
+
+            reader.onerror = function() {
+                statusDisplay.textContent = "Error reading file.";
+                statusDisplay.style.color = "red";
+                convertBtn.disabled = false;
+            };
+
+            reader.readAsText(selectedFile);
+        });
+    </script>
+</body>
+</html>
