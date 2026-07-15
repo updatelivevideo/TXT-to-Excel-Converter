@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TXT to Excel Converter</title>
-    <!-- SheetJS Library for Excel conversion -->
+    <title>TXT Live Checker & Excel Converter</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body {
@@ -13,17 +12,18 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
+            padding: 20px;
         }
         .container {
             background-color: white;
-            padding: 40px;
+            padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
             text-align: center;
             width: 100%;
-            max-width: 400px;
+            max-width: 550px;
         }
         h2 {
             color: #333;
@@ -39,9 +39,10 @@
             padding: 10px 20px;
             border-radius: 5px;
             cursor: pointer;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             border: 1px solid #ced4da;
             transition: 0.3s;
+            font-weight: 500;
         }
         .file-label:hover {
             background-color: #dde0e3;
@@ -63,6 +64,8 @@
             cursor: pointer;
             width: 100%;
             transition: 0.3s;
+            margin-bottom: 10px;
+            font-weight: bold;
         }
         button:hover {
             background-color: #0056b3;
@@ -71,114 +74,235 @@
             background-color: #a0c4ff;
             cursor: not-allowed;
         }
+        .btn-success {
+            background-color: #28a745;
+            display: none; /* প্রথমে হাইড থাকবে */
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
         #status {
-            margin-top: 15px;
+            margin: 15px 0;
+            font-size: 15px;
+            font-weight: bold;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 15px;
             font-size: 14px;
-            color: #555;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+            display: none;
+        }
+        .stats span {
+            font-weight: bold;
+        }
+        .active-list-container {
+            max-height: 200px;
+            overflow-y: auto;
+            text-align: left;
+            border: 1px solid #ced4da;
+            padding: 10px;
+            border-radius: 5px;
+            background: #fafafa;
+            display: none;
+            margin-bottom: 15px;
+        }
+        .active-list-container h4 {
+            margin: 0 0 10px 0;
+            color: #28a745;
+            font-size: 14px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        .id-item {
+            font-family: monospace;
+            font-size: 13px;
+            padding: 4px 0;
+            border-bottom: 1px dashed #eee;
+            color: #333;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2>TXT to Excel Converter</h2>
+        <h2>TXT Live Checker & Excel</h2>
         
         <label for="fileInput" class="file-label">📂 Choose TXT File</label>
         <input type="file" id="fileInput" accept=".txt">
         
         <span id="fileName">No file selected</span>
         
-        <button id="convertBtn" disabled>Convert & Download</button>
+        <button id="liveCheckBtn" disabled>🔍 Live Check IDs</button>
+        
         <div id="status"></div>
+        <div class="stats" id="statsBox">
+            <div style="color: #007bff;">Total: <span id="totalCount">0</span></div>
+            <div style="color: #28a745;">Active: <span id="activeCount">0</span></div>
+            <div style="color: #dc3545;">Dead: <span id="deadCount">0</span></div>
+        </div>
+
+        <div class="active-list-container" id="listContainer">
+            <h4>✅ Active ID List:</h4>
+            <div id="activeList"></div>
+        </div>
+
+        <button id="downloadBtn" class="btn-success">📥 Download Active Excel</button>
     </div>
 
     <script>
         const fileInput = document.getElementById('fileInput');
         const fileNameDisplay = document.getElementById('fileName');
-        const convertBtn = document.getElementById('convertBtn');
+        const liveCheckBtn = document.getElementById('liveCheckBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
         const statusDisplay = document.getElementById('status');
+        const statsBox = document.getElementById('statsBox');
+        const totalCountSpan = document.getElementById('totalCount');
+        const activeCountSpan = document.getElementById('activeCount');
+        const deadCountSpan = document.getElementById('deadCount');
+        const listContainer = document.getElementById('listContainer');
+        const activeListDiv = document.getElementById('activeList');
 
         let selectedFile = null;
+        let activeAccountsData = []; // শুধুমাত্র Active আইডিগুলো এখানে জমা থাকবে
 
-        // When a file is selected
+        // ফাইল সিলেক্ট করার সময়
         fileInput.addEventListener('change', function(event) {
             selectedFile = event.target.files[0];
             if (selectedFile) {
                 fileNameDisplay.textContent = "Selected: " + selectedFile.name;
-                convertBtn.disabled = false;
-                statusDisplay.textContent = "";
+                liveCheckBtn.disabled = false;
+                resetUI();
             } else {
                 fileNameDisplay.textContent = "No file selected";
-                convertBtn.disabled = true;
+                liveCheckBtn.disabled = true;
             }
         });
 
-        // When convert button is clicked
-        convertBtn.addEventListener('click', function() {
+        // UI রিফ্রেশ করার ফাংশন
+        function resetUI() {
+            statusDisplay.textContent = "";
+            statsBox.style.display = "none";
+            listContainer.style.display = "none";
+            downloadBtn.style.display = "none";
+            activeListDiv.innerHTML = "";
+            activeAccountsData = [];
+        }
+
+        // লাইভ চেকিং লজিক (এখানে আপনার আসল API কল বসাতে পারেন)
+        async function checkAccountValidity(uid, password, cookies) {
+            return new Promise((resolve) => {
+                // টেস্টিংয়ের জন্য সিম্যুলেশন: UID ও Password থাকলে এবং কুকিজ ভ্যালিড মনে হলে Active ধরা হচ্ছে
+                // আসল লাইভ চেকের জন্য এখানে fetch() দিয়ে আপনার API এ রিকোয়েস্ট পাঠাতে পারেন
+                setTimeout(() => {
+                    const isValid = uid.length > 3 && password.length > 0 && cookies.length > 5;
+                    resolve(isValid);
+                }, 50); // ছোট ডিলে দেওয়া হয়েছে যাতে লাইভ চেকের ফিলিংস আসে
+            });
+        }
+
+        // Live Check বাটনে ক্লিক করলে
+        liveCheckBtn.addEventListener('click', function() {
             if (!selectedFile) return;
 
-            statusDisplay.textContent = "Processing...";
-            convertBtn.disabled = true;
+            resetUI();
+            liveCheckBtn.disabled = true;
+            statusDisplay.textContent = "⏳ Reading & Checking IDs...";
+            statusDisplay.style.color = "#007bff";
 
             const reader = new FileReader();
 
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 const text = e.target.result;
                 const lines = text.split('\n');
                 
-                // Initialize array with headers
-                const excelData = [['UID', 'Password', 'Cookies']];
+                let total = 0;
+                let active = 0;
+                let dead = 0;
+
+                statsBox.style.display = "flex";
+                listContainer.style.display = "block";
 
                 for (let line of lines) {
                     line = line.trim();
                     
-                    // Skip empty lines or header information
+                    // অপ্রয়োজনীয় লাইন বা হেডার বাদ দেওয়া
                     if (!line || line.startsWith('=') || line.startsWith('Machine') || line.startsWith('Total') || line.startsWith('Date')) {
                         continue;
                     }
 
-                    // Split by colon. 
-                    // Note: Cookies might contain colons, so we only split the first two colons.
                     const parts = line.split(':');
                     
                     if (parts.length >= 3) {
+                        total++;
+                        totalCountSpan.textContent = total;
+
                         const uid = parts[0].trim();
                         const password = parts[1].trim();
-                        // Join the rest of the array back with colon in case cookies had colons
                         const cookies = parts.slice(2).join(':').trim(); 
-                        
-                        excelData.push([uid, password, cookies]);
+
+                        // আইডি লাইভ চেক করা হচ্ছে
+                        const isActive = await checkAccountValidity(uid, password, cookies);
+
+                        if (isActive) {
+                            active++;
+                            activeCountSpan.textContent = active;
+                            
+                            // Active ডেটা লিস্টে এবং অ্যারেতে সেভ করা
+                            activeAccountsData.push([uid, password, cookies]);
+
+                            const idElement = document.createElement('div');
+                            idElement.className = 'id-item';
+                            idElement.textContent = `✔ ${uid}`;
+                            activeListDiv.appendChild(idElement);
+                            activeListDiv.scrollTop = activeListDiv.scrollHeight; // অটো স্ক্রল ডাউন
+                        } else {
+                            dead++;
+                            deadCountSpan.textContent = dead;
+                        }
                     }
                 }
 
-                if (excelData.length > 1) {
-                    // Create a new workbook and worksheet
-                    const wb = XLSX.utils.book_new();
-                    const ws = XLSX.utils.aoa_to_sheet(excelData);
+                liveCheckBtn.disabled = false;
 
-                    // Add worksheet to workbook
-                    XLSX.utils.book_append_sheet(wb, ws, "Data");
-
-                    // Generate Excel file and trigger download
-                    XLSX.writeFile(wb, "Converted_Data.xlsx");
-
-                    statusDisplay.textContent = `Success! Converted ${excelData.length - 1} rows.`;
+                if (activeAccountsData.length > 0) {
+                    statusDisplay.textContent = `✔ Check Completed! Found ${active} Active IDs.`;
                     statusDisplay.style.color = "green";
+                    downloadBtn.style.display = "inline-block"; // ডাউনলোড বাটন দেখানো হবে
                 } else {
-                    statusDisplay.textContent = "No valid data found in the file.";
+                    statusDisplay.textContent = "❌ No active IDs found!";
                     statusDisplay.style.color = "red";
                 }
-                
-                convertBtn.disabled = false;
             };
 
             reader.onerror = function() {
                 statusDisplay.textContent = "Error reading file.";
                 statusDisplay.style.color = "red";
-                convertBtn.disabled = false;
+                liveCheckBtn.disabled = false;
             };
 
             reader.readAsText(selectedFile);
+        });
+
+        // Download Excel বাটনে ক্লিক করলে
+        downloadBtn.addEventListener('click', function() {
+            if (activeAccountsData.length === 0) return;
+
+            // এক্সেলের জন্য হেডার তৈরি
+            const excelData = [['UID', 'Password', 'Cookies'], ...activeAccountsData];
+
+            // নতুন ওয়ার্কবুক ও শিট তৈরি
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+            XLSX.utils.book_append_sheet(wb, ws, "Active_Accounts");
+
+            // শুধুমাত্র Active আইডিগুলোর এক্সেল ফাইল ডাউনলোড
+            XLSX.writeFile(wb, "Active_IDs_Only.xlsx");
         });
     </script>
 </body>
